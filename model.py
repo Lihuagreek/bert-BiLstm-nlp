@@ -454,6 +454,33 @@ class Model():
             tf.assign(self.best_dev_f1, f1).eval()
         self.saver.save(sess, self.checkpoint_path)
 
+    def evaluate_test(self, sess, tag):
+        result = []
+        trans = self.trans.eval()
+        batch = self.test_batch.__next__()
+        inputs, targets = zip(*batch)
+        feed = {
+            self.inputs: inputs,
+            self.targets: targets,
+            self.dropout: 1
+        }
+        scores, acc, lengths = sess.run(
+            [self.logits, self.accuracy, self.length], feed_dict=feed)
+
+        pre_paths = self.decode(scores, lengths, trans)
+
+        tar_paths = targets
+        recall, precision, f1 = f1_score(
+            tar_paths, pre_paths, tag, self.tag_map)
+        # recall, precision, f1 = new_f1_score(
+        #     tar_paths, pre_paths, tag, self.tag_map)
+        best = self.best_dev_f1.eval()
+        if f1 > best:
+            print("\tnew best f1:")
+            print("\trecall {:.2f}\t precision {:.2f}\t f1 {:.2f}".format(
+                recall, precision, f1))
+            tf.assign(self.best_dev_f1, f1).eval()
+
     def prepare_pred_data(self, text):
         vec = [self.vocab.get(i, 0) for i in text]
         feed = {
@@ -582,5 +609,5 @@ if __name__ == "__main__":
         model.train()
     elif ARGS.entry == "predict":
         model.predict()
-    elif ARGS.entry=='test':
+    elif ARGS.entry == 'test':
         model.test()
