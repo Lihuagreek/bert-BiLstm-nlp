@@ -24,7 +24,7 @@ class Model():
         self.nums_tags = 4
         self.lstm_dim = 128
         self.embedding_size = 50
-        self.max_epoch = 10
+        self.max_epoch = 25
         self.learning_rate = ARGS.learning_rate
         self.global_steps = tf.Variable(0, trainable=False)
         # tf.Variable变量定义，变量需要再session中初始化和运行
@@ -162,6 +162,7 @@ class Model():
             for direction in ["forward", "backward"]:
                 with tf.variable_scope(direction):
                     lstm_cell[direction] = rnn.GRUCell(
+                        # 神经网络单元
                         num_units=self.lstm_dim,
                         # use_peepholes=True,
                         # initializer=self.initializer,
@@ -229,7 +230,7 @@ class Model():
         num_warmup_steps = int(num_train_steps * 0.1)
         self.train_op = create_optimizer(self.loss, self.learning_rate, num_train_steps, num_warmup_steps, False)
         # tf.global_variables()查看全部变量；max_to_keep保存最近的5个模型
-        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=7)
+        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=5)
 
     def optimizer_layer(self):
         with tf.variable_scope("optimizer"):
@@ -248,7 +249,7 @@ class Model():
             (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
 
             self.train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=self.global_steps)
-            self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=7)
+            self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=5)
 
     def step(self, sess, batch):
 
@@ -295,8 +296,8 @@ class Model():
             tokenizer = tokenization.FullTokenizer(
                 vocab_file=ARGS.vocab_dir,
             )
-            self.train_data = BertDataUtils(tokenizer, batch_size=10)
-            self.dev_data = BertDataUtils(tokenizer, batch_size=300)
+            self.train_data = BertDataUtils(tokenizer, batch_size=5)
+            self.dev_data = BertDataUtils(tokenizer, batch_size=30)
             self.dev_batch = self.dev_data.iteration()
         # 一般模型
         else:
@@ -354,8 +355,7 @@ class Model():
                     init_string = ""
                     if var.name in initialized_variable_names:
                         init_string = ", *INIT_FROM_CKPT*"
-                    print("  name = %s, shape = %s%s", var.name, var.shape,
-                          init_string)
+                    print("  name = %s, shape = %s%s", var.name, var.shape, init_string)
                 for i in range(self.max_epoch):
                     print("-" * 50)
                     print("epoch {}".format(i))
@@ -442,10 +442,10 @@ class Model():
         pre_paths = self.decode(scores, lengths, trans)
 
         tar_paths = targets
-        recall, precision, f1 = f1_score(
-            tar_paths, pre_paths, tag, self.tag_map)
-        # recall, precision, f1 = new_f1_score(
+        # recall, precision, f1 = f1_score(
         #     tar_paths, pre_paths, tag, self.tag_map)
+        recall, precision, f1 = new_f1_score(
+            tar_paths, pre_paths, tag, self.tag_map)
         best = self.best_dev_f1.eval()
         if f1 > best:
             print("\tnew best f1:")
@@ -544,10 +544,10 @@ class Model():
                 print(paths)
                 org = get_tags(paths[0], "ORG", self.tag_map)
                 org_entity = format_result(org, text, "ORG")
-                per = get_tags(paths[0], "LOC", self.tag_map)
-                per_entity = format_result(per, text, "LOC")
+                LOC = get_tags(paths[0], "LOC", self.tag_map)
+                LOC_entity = format_result(LOC, text, "LOC")
 
-                resp = org_entity["entities"] + per_entity["entities"]
+                resp = org_entity["entities"] + LOC_entity["entities"]
                 print(json.dumps(resp, indent=2, ensure_ascii=False))
 
     def test(self):
@@ -583,7 +583,9 @@ class Model():
                 sess.run(tf.global_variables_initializer())
 
             trans = self.trans.eval()
+            steps = 0
             for batch in self.test_data.get_batch():
+                steps += 1
                 if ARGS.mode == "bert":
                     global_steps, loss, logits, acc, length = self.bert_step(
                         sess, batch
@@ -592,6 +594,9 @@ class Model():
                     global_steps, loss, logits, acc, length = self.step(
                         sess, batch
                     )
+                if steps % 1 == 0:
+                    print("[->] step {}/{}\tloss {:.2f}\tacc {:.2f}".format(
+                        steps, len(self.train_data.batch_data), loss, acc))
             if ARGS.mode == "bert":
                 self.bert_evaluate(sess, "ORG")
                 self.bert_evaluate(sess, "LOC")
