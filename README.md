@@ -23,7 +23,13 @@
     python3 model.py -e predict -m bert
     # 使用一般模型
     python3 model.py -e predict
-
+    
+    # 测试
+    # 使用bert模型
+    python3 model.py -e test -m bert
+    # 使用一般模型
+    python3 model.py -e test
+    
 # 介绍
 
 ### bert 模型的加载和使用
